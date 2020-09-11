@@ -30,8 +30,7 @@ int main()
         scanf("%d", &n);
         printf("Enter %d integers \n", n);
 
-        scanf("%d", &arr[0]);
-        for (i = 1; i < n; i++){
+        for (i = 0; i < n; i++){
                 scanf("%d", &arr[i]);
                 sort(arr, 0, i, arr[i]);
         }
