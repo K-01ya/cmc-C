@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
-#define MAXLEN 10
+#define MAXLEN 1024
 
 struct word {
     char part[MAXLEN];
@@ -23,8 +23,8 @@ void tree_to_dictionary(struct node *tree, struct node **dictionary);
 void adding_word_to_dictionary(struct word *w,  int n, struct node **t);
 void print_dictionary(struct node *dictionary, FILE *fout);
 void print_word(struct word *w, FILE *fout);
-void free_tree_memory(struct node **tree);
-void free_word_memory(struct word **word);
+void free_tree_memory(struct node *tree);
+void free_word_memory(struct word *word);
 
 int word_number = 0;
 
@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
 
     FILE *fin = stdin, *fout = stdout;
     int param = 0;
-    struct word *word, *punct;
+    struct word *word = NULL, *punct = NULL;
     struct node *tree = NULL, *dictionary = NULL;
 
     while ((param = getopt(argc, argv, "i:o:")) != -1) {
@@ -57,15 +57,15 @@ int main(int argc, char *argv[]) {
     tree_to_dictionary(tree, &dictionary);
     printf("\n");
     print_dictionary(dictionary, fout);
-    free_tree_memory(&dictionary);
-    free_tree_memory(&tree);
+    free_tree_memory(dictionary);
+    free_tree_memory(tree);
     return 0;
 }
 
 struct word *reading_word(struct word **w, FILE *f) {
     char c, str[MAXLEN];
     int len = 0;
-    struct word *punctuation, *ppunctuation = NULL;
+    struct word *punctuation = NULL;
     while ((len < MAXLEN - 1) && isalnum(c = fgetc(f))) {
         str[len] = c;
         len++;
@@ -75,7 +75,7 @@ struct word *reading_word(struct word **w, FILE *f) {
     if (isalnum(c)) {
         *w = malloc(sizeof(struct word));
         strcpy((*w) -> part, str);
-        ppunctuation = reading_word(&((*w) -> next), f);
+        punctuation = reading_word(&((*w) -> next), f);
     }
     else if (len) {
         *w = malloc(sizeof(struct word));
@@ -87,9 +87,8 @@ struct word *reading_word(struct word **w, FILE *f) {
         (punctuation -> part)[0] = c;
         (punctuation -> part)[1] = '\0';
         punctuation -> next = NULL;
-        return punctuation;
     }
-    return ppunctuation;
+    return punctuation;
 }
 
 void adding_word_to_tree(struct word *w, struct node **t) {
@@ -105,6 +104,7 @@ void adding_word_to_tree(struct word *w, struct node **t) {
     else if ((comparison = word_comparison(w, (*t) -> data)) == 0){
         (*t) -> n += 1;
     	word_number += 1;
+	free_word_memory(w);
     }
     else if (comparison < 0)
         adding_word_to_tree(w, &((*t) -> left));
@@ -131,6 +131,7 @@ int word_comparison(struct word *w1, struct word *w2) {
 void tree_to_dictionary(struct node *tree, struct node **dictionary) {
     if (tree) {
         adding_word_to_dictionary(tree -> data, tree -> n, dictionary);
+	tree -> data = NULL;
 	tree_to_dictionary(tree -> left, dictionary);
         tree_to_dictionary(tree -> right, dictionary);
 
@@ -167,20 +168,19 @@ void print_word(struct word *w, FILE *fout) {
     }
 }
 
-void free_tree_memory(struct node **tree) {
-    if (*tree) {
-        free_tree_memory(&((*tree) -> left));
-        free_tree_memory(&((*tree) -> right));
-        free_word_memory(&((*tree) -> data));
-        free((*tree) -> left);
-        free((*tree) -> right);
+void free_tree_memory(struct node *tree) {
+    if (tree) {
+        free_tree_memory(tree -> left);
+        free_tree_memory(tree -> right);
+        free_word_memory(tree -> data);
+        free(tree);
     }
 
 }
 
-void free_word_memory(struct word **word){
-    if (*word) {
-        free_word_memory(&((*word) -> next));
-        free(*word);
+void free_word_memory(struct word *word){
+    if (word) {
+        free_word_memory(word -> next);
+        free(word);
     }
 }
