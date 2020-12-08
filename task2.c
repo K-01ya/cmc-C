@@ -11,23 +11,17 @@
 #include <math.h>
 #include <signal.h>
 
-int good(int fd) {
-	int c = 0;
+int bad(int fd) {
+	int c = 0, previous;
 	int flag = 0;
 	read(fd, &c, 1);
-	if (c == -1 || c != '\n') {
-		return 1;
-	}
-	int previous = c;
-	read(fd, &c, 1);
-	if (c == -1 || c != '\n')
+	if (c == -1 || c == '\n') {
 		return 0;
-	flag = c - previous;
-	read(fd, &c, 1);
+	}
 	for(;;) {
  	       previous = c;
                read(fd, &c, 1);
-	       if (c == -1 || c != '\n')
+	       if (c == -1 || c == '\n')
 		       return 0;
                if (flag * (c - previous) < 0)
 		       return 1;
@@ -37,28 +31,24 @@ int good(int fd) {
 }
 
 int main(int argc, char **argv) {
-/*	int fd = open(argv[1], O_WRONLY, 0666);
-	int c;
-	int n[1024];
-	int i = 0;
-	int previous;
-	int flag = 0;
-	int flag1 = 0;
-	int flag2 = 0; */
-//	read(fd, c, 1);
-	printf("%d", good(0));
-
-	/*
-	while (!eof(fd)) {
-		read(fd, &c, 1);
-
-		while (!eof(fd) && c != '\n') {
-			previous = c;
-			read(fd, &c, 1);
-			if (previous > c) {
-				printf
-			}
+	if (argc < 2) 
+		return 0;
+	int fd = open(argv[1], O_WRONLY, 0666);
+	fd = 0;
+	int n[1024], i = 0, n_str = 0;
+	int c = 0;
+	while (feof(STDIN)) {
+		if (!bad(fd)) {
+			n[i] = n_str;
+			i++;
 		}
+		else {
+			read(fd, &c, 1);
+			while (!feof(STDIN) && c != '\n')
+				read(fd, &c, 1);
+		}
+		n_str++;
 	}
-	*/
+	printf("%d\n", i); 
+	
 }
