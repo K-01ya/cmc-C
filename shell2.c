@@ -16,6 +16,7 @@
 #define STANDARD_COLOR "\033[0m"
 
 int command_execution(char *dir, char **symbols, char ***commands);
+void free_memory_before_exit(char ****commands, char ***symbols);
 int split_command(char **args, char ****commands, char ***splitted_symbols);
 int special_symbol(char *str);
 int read_command(char ***args);
@@ -34,27 +35,14 @@ int main() {
     for (;;) {
         printf("%s%s%s$ ", BLUE, dir, STANDARD_COLOR);
         argc = read_command(&args);
-        if (argc > 0) {/*
-	    for (int i = 0; i < argc; i++)
-                printf("%d %s\n", i, args[i]);
-            command_number = split_command(args, &commands, &special_symbols);
-            for (int i = 0; i < command_number; i++) {
-                for (int j = 0; commands[i][j] !=  NULL; j++) {
-                        printf("%d: %s", i, commands[i][j]); printf("\n"); }
-            }
-	    for (int k = 0; special_symbols[k] != NULL; k++)
-		    printf("%d: %s \n", k, special_symbols[k]);
-        */
-	flag_command = command_execution(dir, special_symbols, commands);
-	if (flag_command == -1)
-		break;
-	for (int i = 0; i <= command_number; i++)
-	    free_memory(&(commands[i]));
-	commands = NULL;
-	free_memory(&args);
-	free_memory(&special_symbols);
-	special_symbols = NULL;
-	}
+        if (argc > 0) {
+			command_number = split_command(args, &commands, &special_symbols);
+			free_memory(&args);
+			flag_command = command_execution(dir, special_symbols, commands);
+			free_memory_before_exit(&commands, &special_symbols);
+			if (flag_command == -1)
+                break;
+		}
         if (argc == -1){
             printf("Memory couldn't be allocated");
             return -1;
@@ -70,12 +58,11 @@ int main() {
 int command_execution(char *dir, char **symbols, char ***commands) {
     int symbol_index = 0, command_index = 0;
     char *home = getenv("HOME");
-    pid_t pid = 0;
+    pid_t pid = 0, pid1 = 0;
     char **args = commands[0];
     int fd[2];
-	int pipe_flag = 0;
+
     while (commands[command_index] != NULL) {
-		pipe_flag = 0;
 		if (strcmp(args[0], "exit") == 0) { //exit
 			return -1;
 		}
@@ -86,84 +73,108 @@ int command_execution(char *dir, char **symbols, char ***commands) {
 				perror(args[1]);
 			getcwd(dir, MAXLEN);
 		}
-		else {	    //other commands 
-			while (symbols != NULL && symbols[symbol_index] != NULL && strcmp(symbols[symbol_index], "|") == 0) {
-				pipe(fd);
+		else {	    //other commands
+			pid1 = fork(); //additional process for pipelining
+			if (pid1 == -1) {
+				perror("fork");
+				free_memory_before_exit(&commands, &symbols);
+				exit(1);
+			}
+			else if (pid1 == 0) {
+				while (symbols != NULL && symbols[symbol_index] != NULL && strcmp(symbols[symbol_index], "|") == 0) { //pipeling
+					pipe(fd);
+					pid = fork();
+					if (pid == -1) {
+						perror("fork");
+						free_memory_before_exit(&commands, &symbols);
+						exit(1);
+					}
+					else if (pid == 0) {
+						dup2(fd[1], 1);
+						close(fd[1]);
+						close(fd[0]);
+						execvp(args[0], args);
+						perror(args[0]);
+						free_memory_before_exit(&commands, &symbols);
+            	  		commands = NULL;
+						exit(1);
+					}
+					dup2(fd[0], 0);
+					close(fd[0]);
+					close(fd[1]);
+					symbol_index += 1;
+					command_index += 1;
+					if (commands[command_index] == NULL) {
+						printf("Wrong command\n");
+            	    	free_memory_before_exit(&commands, &symbols);
+						exit(5);
+					}
+					args = commands[command_index];
+				}
+				while (wait(NULL) != -1);
 				pid = fork();
 				if (pid == -1) {
-    	            perror("fork");
-        	        exit(1);
-                }
+					perror("fork");
+					free_memory_before_exit(&commands, &symbols);
+					exit(1);
+				}
 				else if (pid == 0) {
-					dup2(fd[1], 1);
-					if (pipe_flag == 1) 
-						dup2(fd[0], 0);
-					close(fd[1]);
-					close(fd[0]);
+					while (symbols[symbol_index] != NULL && (strcmp(symbols[symbol_index], "|") != 0)) { //redirection of input and output
+						if (commands[command_index + 1] == NULL) { //not enough parametrs in command
+								printf("Wrong command\n");
+								free_memory_before_exit(&commands, &symbols);
+								exit(1);
+							}
+						if (strcmp(symbols[symbol_index], ">") == 0) { // >, output redirection
+							int fd_out = open(commands[command_index + 1][0], O_WRONLY | O_CREAT | O_TRUNC, 0666);
+							if (fd_out == -1) {
+								perror(commands[command_index + 1][0]);
+								free_memory_before_exit(&commands, &symbols);
+								exit(1);
+							}
+							dup2(fd_out, 1);
+							close(fd_out);
+						}
+						else if (strcmp(symbols[symbol_index], "<") == 0) { // <, input redirection
+							int fd_in = open(commands[command_index + 1][0], O_RDONLY, 0666);
+							if (fd_in == -1) {
+								perror(commands[command_index + 1][0]);
+								free_memory_before_exit(&commands, &symbols);
+								exit(1);
+							}
+							dup2(fd_in, 0);
+							close(fd_in);
+						}
+						else if (strcmp(symbols[symbol_index], ">>") == 0) { // >>, output redirecion without truncation
+							int fd_out = open(commands[command_index + 1][0], O_WRONLY | O_APPEND | O_CREAT, 0666);
+							if (fd_out == -1) {
+								perror(commands[command_index + 1][0]);
+								free_memory_before_exit(&commands, &symbols);
+								exit(1);
+							}
+							dup2(fd_out, 1);
+							close(fd_out);
+						}
+						command_index += 1;
+						symbol_index += 1;
+					}
 					execvp(args[0], args);
-	    	        perror(args[0]);
-    	    	    exit(1);
+					perror(args[0]);
+					free_memory_before_exit(&commands, &symbols);
+					exit(1);
 				}
 				wait(NULL);
-				pipe_flag = 1;
-				symbol_index += 1;
-				command_index += 1;
-				if (commands[command_index] == NULL) {
-					printf("Wrong command\n");
-					return -3;
-				}
-				args = commands[command_index];
+				free_memory_before_exit(&commands, &symbols);
+				exit(0);
 			}
-			pid = fork();
-			if (pid == -1) {
-				perror("fork");
-				exit(1);
-			}
-			if (pid == 0) {
-				while (symbols[symbol_index] != NULL && (strcmp(symbols[symbol_index], ">") == 0 || strcmp(symbols[symbol_index], "<") == 0 || strcmp(symbols[symbol_index], " >>") == 0)) {
-					if (commands[command_index + 1] == NULL) {
-							printf("Wrong command\n");
-							exit(1);
-						}
-					if (strcmp(symbols[symbol_index], ">") == 0) {
-						int fd_out = open(commands[command_index + 1][0], O_WRONLY | O_CREAT | O_TRUNC, 0666);
-						if (fd_out == -1) {
-							perror(commands[command_index + 1][0]);
-							exit(1);
-						}
-						dup2(fd_out, 1);
-						close(fd_out);
-					}
-					else if (strcmp(symbols[symbol_index], "<") == 0) {
-						int fd_in = open(commands[command_index + 1][0], O_RDONLY, 0666);
-						if (fd_in == -1) {
-							perror(commands[command_index + 1][0]);
-							exit(1);
-						}
-						dup2(fd_in, 0);
-						close(fd_in);
-					}
-					else if (strcmp(symbols[symbol_index], ">>") == 0) {
-						int fd_out = open(commands[command_index + 1][0], O_WRONLY | O_CREAT, 0666);
-						if (fd_out == -1) {
-							perror(commands[command_index + 1][0]);
-							exit(1);
-						}
-						dup2(fd_out, 1);
-						close(fd_out);
-					}
-					command_index += 1;
-					symbol_index += 1;
-				}
-				if (pipe_flag == 1) {
-					dup2(fd[0], 0);
-				}
-				execvp(args[0], args);
-				perror(args[0]);
-				exit(1);
-			}
-			wait(NULL);
+			else
+				wait(NULL);
 		}
+		//changing of current symbol_index and command_index in parent
+		while (symbols[symbol_index] != NULL && strcmp(symbols[symbol_index], "|") == 0) { 
+            command_index += 1;
+            symbol_index += 1;
+        }
 		while (symbols[symbol_index] != NULL && strcmp(symbols[symbol_index], "|") != 0) {
 			command_index += 1;
 			symbol_index += 1;
@@ -174,48 +185,60 @@ int command_execution(char *dir, char **symbols, char ***commands) {
     return 0;
 }
 
+void free_memory_before_exit(char ****commands, char ***symbols) {
+	for (int i = 0; (*commands)[i] != NULL; i++) {
+		free_memory(&(*commands)[i]);
+	}
+    free(*commands);
+    *commands = NULL;
+	free_memory(symbols);
+}
+
 int split_command(char **args, char ****commands, char ***special_symbols) {
     int command_number = 0, word_number = 0, special_symbol_number = 0;
     int i = 0;
     (*commands) = realloc(*commands, sizeof(char***));
     (*commands)[0] = NULL;
+	(*commands)[0] = realloc((*commands)[0], sizeof(char **));
+    (*commands)[0][0] = NULL;
+
     (*special_symbols) = realloc(*special_symbols, sizeof(char **));
     (*special_symbols)[0] = NULL;
 
     while (args[i] != NULL) {
-//      printf("split\n");
         if (special_symbol(args[i])) {
             (*special_symbols)[special_symbol_number] = realloc((*special_symbols)[special_symbol_number], strlen(args[i]) + 1);
             strcpy((*special_symbols)[special_symbol_number], args[i]);
-	    special_symbol_number += 1;
-	                
+	        special_symbol_number += 1;
+	        (*special_symbols) = realloc(*special_symbols, (special_symbol_number + 1) * sizeof(char **));
+            (*special_symbols)[special_symbol_number] = NULL;
+ 
 
-            (*commands)[command_number] = realloc((*commands)[command_number], (word_number + 1) * sizeof(char **));
-            (*commands)[command_number][word_number] = NULL;
             command_number += 1;
             (*commands) = realloc(*commands, (command_number + 1) * sizeof(char***));
             (*commands)[command_number] = NULL;
+			if (args[i + 1] != NULL) {
+				(*commands)[command_number] = realloc((*commands)[command_number], sizeof(char **));
+			    (*commands)[command_number][0] = NULL;
+
+			}
             word_number = 0;
         }
         else {
-            (*commands)[command_number] = realloc((*commands)[command_number], (word_number + 1) * sizeof(char **));
-            (*commands)[command_number][word_number] = NULL;
             (*commands)[command_number][word_number] = realloc((*commands)[command_number][word_number], strlen(args[i]) + 1);
-            strcpy((*commands)[command_number][word_number], args[i]);
+			strcpy((*commands)[command_number][word_number], args[i]);
             word_number += 1;
+			(*commands)[command_number] = realloc((*commands)[command_number], (word_number + 1) * sizeof(char **));
+            (*commands)[command_number][word_number] = NULL;
+
         }
         i++;
     }
-    (*commands)[command_number] = realloc((*commands)[command_number], (word_number + 1) * sizeof(char **));
-    (*commands)[command_number][word_number] = NULL;
-    command_number += 1;
-    if (special_symbol_number != 0) {
-        (*special_symbols) = realloc(*special_symbols, (special_symbol_number + 1) * sizeof(char **));
-        (*special_symbols)[special_symbol_number] = NULL;
-    }
-    (*commands) = realloc(*commands, (command_number + 1) * sizeof(char **));
-    (*commands)[command_number] = NULL;
-
+	if ((*commands)[command_number]	!= NULL) {
+    	command_number += 1;
+    	(*commands) = realloc(*commands, (command_number + 1) * sizeof(char **));
+		(*commands)[command_number] = NULL;
+	}
     return command_number;
 }
 
@@ -223,7 +246,6 @@ int special_symbol(char *str) {
     if (strcmp(str, ">>") == 0 || strcmp(str, ">") == 0 || strcmp(str, "<") == 0 || strcmp(str, "|") == 0) {
         return 1;
     }
-
     return 0;
 }
 
@@ -300,10 +322,10 @@ int read_command(char ***args) {
 
 void free_memory(char ***args) {
     int i = 0;
-    if (*args) {
+    if (*args != NULL) {
         while ((*args)[i] != NULL) {
-            free((*args)[i]);
-	    i += 1;
+			free((*args)[i]);
+	    	i += 1;
         }
         free(*args);
         *args = NULL;
