@@ -15,7 +15,6 @@ int main(int argc, char **argv) {
 	pid_t pid;
 	int fd[2];
 	if (argc < 1) {
-		printf("too few arguments\n");
 		return 1;
 	}
 	else {
@@ -23,30 +22,32 @@ int main(int argc, char **argv) {
 		pid = fork();
 		if (pid == -1) {
 			perror("fork 1");
-		}	
+		}
 		else if (pid == 0) {
 			dup2(fd[1], 1);
 			close(fd[1]);
 			close(fd[0]);
-			execlp("sort", "sort", "-u",argv[1], NULL);
+			execlp("sort", "sort", "-u", argv[1], NULL);
 			perror("sort");
 			exit(1);
 		}
 		else {
-			wait(NULL);
 			pid = fork();
 			if (pid == -1) {
 				perror("fork 2");
 			}   
 			else if (pid == 0) {
 				dup2(fd[0], 0);
-	            close(fd[1]);
-    	        close(fd[0]);
-				execlp("wc", "wc", "-l", argv[1], NULL);
+	        	close(fd[1]);
+    	     	close(fd[0]);
+				execlp("wc", "wc", "-l", NULL);
 				perror("sort");
 				exit(1);
 			}
 			else {
+				close(fd[0]);
+				close(fd[1]);
+				wait(NULL);
 				wait(NULL);
 			}
 		}
